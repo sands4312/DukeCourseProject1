@@ -1,0 +1,189 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `brfss2013`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+
+* * *
+
+## Part 1: Data
+In the brfss, stratified sampling was used, so the sampling is random. But there is no random assignment. That is, participates were not randomly assigned to sleep a certain about or exercise a certain number of days, etc. So this is a observational study and so is generalizable but no causality can be inferred.
+
+I’m skeptical when data is collected by having participates are asked subjective questions such as how would you rate your general health or ask participates to recall information like how many of the last 30 days active or healthy.
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1:** For the general population in the US, is there a correlation between the amount of sleep and the person’s general health? There seems to be more discussion on diet and exercise relation to health but in our busy lives I think many people do not get enough sleep. I really more interested in causal relationships but this is only an observational study. (I’m also interested on amount and quality of sleep in relation to cognitive functioning.)
+
+**Research quesion 2:** For the general population in the US, is there a relation between physical activity, employment status and income level. We might suspect that higher income or employment statua might lead to more activity. But perhaps more income or higher status may lead to less time for physical activity. I’m curious if we can see relation one way or the other.
+
+**Research quesion 3:** For the general population in the US, is there relation between sugar drink intake and weight. There’s been a lot of news lately about the ill-effects of excess sugar in diet and in particular related to weight. Soda and other sugar drinks add lots of sugar calories to diet without much of any nutrient.
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+NOTE: Insert code chunks as needed by clicking on the "Insert a new code chunk" 
+button (green button with orange arrow) above. Make sure that your code is visible
+in the project you submit. Delete this note when before you submit your work.
+
+**Research quesion 1:** Relationship between sleep time and general health
+
+```{r}
+# There are two outliers for sleptim1 that does not make any sense so remove.
+remsleepout <- filter(brfss2013, sleptim1 < 100)
+
+# Create df general health and mean of sleep time for each general health catagory.
+hlthSleep <- remsleepout %>% group_by(genhlth) %>% summarise(mn_sleep = mean(sleptim1))
+
+# display
+hlthSleep
+
+# make plots of mean sleep grouped by genhlth
+
+ggplot(hlthSleep, aes(genhlth, mn_sleep)) +
+    geom_point(aes(genhlth, mn_sleep)) +
+    labs(title="mean hours of sleep for each general health self-rating",
+         x="general health rating", y="mean hours of sleep")
+```
+
+
+
+**Research quesion 2:** Relationship between exercising in last 30 days and income and employment status.
+
+```{r}
+# Remove all data with NA's.
+phyact_rm.na <- filter(brfss2013, !is.na(exerany2), !is.na(income2), !is.na(employ1))
+
+# Find porportion that does any exercise grouped by income.
+phyact_income <- phyact_rm.na %>% group_by(income2) %>% summarise(prop_exer = sum(exerany2 == "Yes") / n())
+
+# Print.
+phyact_income
+
+
+# Plot - first replace spaces with line breaks in income2 names.
+levels(phyact_income$income2) <- gsub(" ", "\n", levels(phyact_income$income2))
+ggplot(phyact_income, aes(income2, prop_exer)) +
+    geom_point(aes(income2, prop_exer)) +
+    labs(title="proportion who exercised in last 30 days vs. income", x="income", y="proportion exercese")
+```
+
+There appears to be a very strong relationship between exercising and income. Again there this observational study will not lead to any causality, it’s interesting that the more income the larger proportion exercise.
+
+I would love to explore this more and look at some of the other exercise questions on this survey such as type of exercise and how much running, biking etc.
+
+```{r}
+# Find porportion that does any exercise grouped by employment status.
+phyact_employ <- phyact_rm.na %>% group_by(employ1) %>% summarise(prop_exer = sum(exerany2 == "Yes") / n())
+
+# Print.
+phyact_employ
+
+# Plot
+
+levels(phyact_employ$employ1) <- gsub(" ", "\n", levels(phyact_employ$employ1))
+ggplot(phyact_employ, aes(employ1, prop_exer)) +
+    geom_point(aes(employ1, prop_exer)) +
+    labs(title="proportion exercese in last 30 days vs employment status",
+         x="employment status", y="proportion exercise")
+```
+
+The employment status with clearly the largest proportion reporting having exercised in last 30 days is “student”. And the one with the lowest is “Out of work for 1 year or more”. Of course this can lead to one to speculate. Is lack of exercise and out of work both cause by some lack of motivation or depression. Or did being out of work cause lose of motivation and increase depression that led to lack of exercise.
+
+**Research quesion 3:** Sugar intake vs weight.
+
+```{r}
+# Remove NA's
+sugar <- filter(brfss2013, !is.na(weight2), !is.na(height3), !is.na(ssbsugar), !is.na(ssbfrut2), weight2 != "")
+
+# Select only columns I'll be working with.
+sugar <- select(sugar, weight2, height3, ssbsugar, ssbfrut2)
+
+# height3 given in ft and inches or in cm.  Convert to all inches, ht_inches.
+# Make column of height as string
+sugar <- mutate(sugar, ht_string = as.character(height3))
+# Get first char of ht_string - it's the feet or if "9" height in cm. Convert to numeric.
+sugar <- mutate(sugar, ft = as.numeric(substring(ht_string, 1, 1)))
+# Get rest of char which is inches part of ft inches or cm if metric.  Convert to numeric.
+sugar <- mutate(sugar, inches = as.numeric(substring(ht_string, 2, 4)))
+# now find total ht in inches.  Either ft and inches or cm.
+sugar <- mutate(sugar, ht_inches = ifelse(ft != 9, 12*ft + inches, round(0.393701*inches, digits = 0)))
+
+# height given in pounds or sometimes with leading 9 in Kg.  So convert leading 9 form kg to lbs.
+sugar <- mutate(sugar, wt_char = as.character(weight2))
+sugar <- mutate(sugar, wt_lbs =  ifelse( nchar(wt_char) != 4, as.numeric(wt_char), round((as.numeric(wt_char) - 9000)*2.20462, digits = 0)))
+
+
+# Remove a wt_lbs NA.
+sugar <- filter(sugar, !is.na(wt_lbs))
+
+# Find BMI - Body Mass Index.  Round to nearest whole.
+sugar <- mutate(sugar, bmi = round(703*wt_lbs/(ht_inches*ht_inches), digits = 0))
+
+# select only what I need
+sugar <- select(sugar, bmi, ssbsugar, ssbfrut2)
+
+#Now convert the amount of sugar drinks to same period - 1 year.
+sugar <- mutate(sugar, ssbsugar_char = as.character(ssbsugar))
+sugar <- mutate(sugar, sugar_period = substring(ssbsugar_char, 1, 1))
+sugar <- mutate(sugar, sugar_amount = ifelse(sugar_period == "0", 0, as.numeric(substring(ssbsugar_char, 2, 3))))
+sugar <- mutate(sugar, soda_year = ifelse(sugar_amount == 0, 0, ifelse(sugar_period == "1", 365*sugar_amount, ifelse(sugar_period == "2", 52*sugar_amount, 12*sugar_amount))))
+
+#Now convert the amount of sugar-sweatened fruit drinks to same period - 1 year.
+sugar <- mutate(sugar, ssbfrut2_char = as.character(ssbfrut2))
+sugar <- mutate(sugar, frut2_period = substring(ssbfrut2_char, 1, 1))
+sugar <- mutate(sugar, frut2_amount = ifelse(frut2_period == "0", 0, as.numeric(substring(ssbfrut2_char, 2, 3))))
+sugar <- mutate(sugar, frut2_year = ifelse(frut2_amount == 0, 0, ifelse(frut2_period == "1", 365*frut2_amount, ifelse(frut2_period == "2", 52*frut2_amount, 12*frut2_amount))))
+
+#Now keep only what I need
+sugar <- select(sugar, bmi, soda_year, frut2_year)
+
+ggplot(sugar, aes(soda_year, bmi)) +
+    geom_point(aes(soda_year, bmi)) +
+    labs(title="bmi vs number of sodas consumed per year",
+         x="number of sodas consumed per year", y="bmi")
+
+
+
+ggplot(sugar, aes(frut2_year, bmi)) +
+    geom_point(aes(frut2_year, bmi)) +
+    labs(title="bmi vs number of sweetened fruit juices consumed per year",
+         x="number of sweetened fruit drinks consumed per year", y="bmi")
+```
+
+
+In this case for this exploratory data analysis I can’t concern any relationship between drinking soda or sweetened fruit drinks and overweight-ness as measured by body mass index (bmi)
+
+I think there’s a problem including just sweetened fruit drinks. Fruit drinks with no added sugar have a large about of sugar and should be included here.
+
+Something else to think about. There seems to be several people with very high bmi’s who consume very few sodas and/or sweetened drinks. But many overweight people probably decide to cut down or completely eliminate soda from their diet. They may lose some weight, but for some time will still have high bmi. If it’s effective it still takes some time.
+
+I think I will need to further investigate this as I progress through this specialization.
